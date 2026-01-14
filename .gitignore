@@ -1,0 +1,13 @@
+*/.geko
+*/.build
+*/.swiftpm
+
+### macOS ###
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Plugins Artefacts
+*/**/*.zip
+*/PluginBuild/
