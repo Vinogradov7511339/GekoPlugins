@@ -1,0 +1,62 @@
+name: release
+on:
+  workflow_dispatch:
+
+jobs:
+  draft_release:
+  name: Draft Release
+  runs-on: [self-hosted, vovkodav]
+  env:
+    GH_PAT: ${{ secrets.GH_PAT }}
+    GH_USER: ${{ secrets.GH_USER }}
+  steps:
+    - uses: actions/checkout@v6.0.1
+      with:
+        persist-credentials: false
+        fetch-depth: 0
+    - name: Fetch last tag
+      run: |
+        git config --global credential.helper '!f() { echo "username=${GH_USER}"; echo "password=${GH_PAT}"; }; f'
+        git fetch --tags
+
+        LATEST_TAG=$(git describe --abbrev=0 --tags)
+        if [ -z "$LATEST_TAG" ]; then
+          echo "Latest tag not found" >&2; exit 1;
+        fi
+        echo $LATEST_TAG
+
+        LATEST_VERSION=$(echo "$LATEST_TAG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+        if [ -n "$LATEST_VERSION" ]; then
+          LATEST_VERSION="${LATEST_VERSION}"
+        else
+          echo "Failed to extract version from tag: $LATEST_TAG" >&2; exit 1;
+        fi
+
+        echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
+    - name: Calculate new version
+      run: |
+        LATEST_VERSION="${{ env.LATEST_VERSION }}"
+
+        ALL_MESSAGES=$(git log 0.0.1..HEAD --format=%B | grep -E "\[.*\] \[(patch|minor|major)\] (feat|fix|refactor): .*")
+        echo $ALL_MESSAGES
+        chmod +x ./scripts/helpers/incr_semver.sh
+
+        new_patch=""
+        if [[ "$ALL_MESSAGES" == *"[major]"* ]]; then
+        new_patch=$(./scripts/helpers/incr_semver.sh "$LATEST_VERSION" major)
+        elif [[ "$ALL_MESSAGES" == *"[minor]"* ]]; then
+        new_patch=$(./scripts/helpers/incr_semver.sh "$LATEST_VERSION" minor)
+        else
+        new_patch=$(./scripts/helpers/incr_semver.sh "$LATEST_VERSION" patch)
+        fi
+
+        if [ "$RELEASE_EXIST" = "true" ]; then
+          echo "Release exists, set NEW_VERSION=LATEST_VERSION"
+          echo "NEW_VERSION=$LATEST_VERSION" >> $GITHUB_ENV
+        else
+          echo "Release does not exist"
+          echo "NEW_VERSION=$new_patch" >> $GITHUB_ENV
+        fi 
+        echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+        echo "$ALL_MESSAGES" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
